@@ -102,8 +102,18 @@ class SphGcSeg(object):
         self.point_b = sph_point(point_b)
         self.pole = self.point_b.cross_product(self.point_a)
 
-    def has_point_on_left(self, point):
-        return self.pole.dot_product(point) <= 0.0
+    def has_point_on_left_side(self, point):
+        """
+        Returns >0 (left), <1 (right) or =0.0 (close to the line).
+
+        There is a tolerance zone near the line (colinear), where 0.0 is always
+        returned.  So caller uses, for example. '>' or '>=' as required.
+
+        """
+        dot = self.pole.dot_product(point)
+        if abs(dot) < 1e-7:
+            return 0.0
+        return -dot
 
     def _cos_angle_to_other(self, other):
         # Angle from AB to AP
@@ -124,7 +134,7 @@ class SphGcSeg(object):
     def angle_to_point(self, point):
         # Angle from AB to AP
         result = math.acos(self._cos_angle_to_point(point))
-        if abs(result) > 1e-7 and not self.has_point_on_left(point):
+        if abs(result) > 1e-7 and self.has_point_on_left_side(point) < 0.0:
             result = -result
         return result
 
@@ -157,7 +167,7 @@ class SphAcwConvexPolygon(object):
         result = True
         preceding_edge = edges[-1]
         for this_edge in edges:
-            if not preceding_edge.has_point_on_left(this_edge.point_b):
+            if preceding_edge.has_point_on_left_side(this_edge.point_b) < 0.0:
                 result = False
                 break
             preceding_edge = this_edge
@@ -218,7 +228,8 @@ class SphAcwConvexPolygon(object):
 
     def contains_point(self, point, in_degrees=False):
         point = sph_point(point, in_degrees=in_degrees)
-        return all(gc.has_point_on_left(point) for gc in self.edge_gcs())
+        return all(gc.has_point_on_left_side(point) >= 0.0
+                   for gc in self.edge_gcs())
 
     def area(self):
         angle_total = 0.0

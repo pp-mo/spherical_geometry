@@ -151,22 +151,34 @@ class TestSphGcSeg(tests.IrisTest):
     def test_seg_has_point_on_left(self):
         seg = sph.SphGcSeg(spt((0, 30)), spt((0, 50)))
         p3 = spt((-10, 70))
-        self.assertEqual(seg.has_point_on_left(p3), False)
+        self.assertFalse(seg.has_point_on_left_side(p3) > 0.0)
         p3 = spt((10, 70))
-        self.assertEqual(seg.has_point_on_left(p3), True)
+        self.assertTrue(seg.has_point_on_left_side(p3) > 0.0)
+
+        # check _near_ co-linear
         p3 = spt((0.01, 70))
-        self.assertEqual(seg.has_point_on_left(p3), True)
-        
+        self.assertTrue(seg.has_point_on_left_side(p3) > 0.0)
+
+        # check points on the segment itself, and co-linear
+        p3 = spt((0, 70))
+        self.assertTrue(seg.has_point_on_left_side(p3) == 0.0)
+        p3 = spt((0, 10))
+        self.assertTrue(seg.has_point_on_left_side(p3) == 0.0)
+        p3 = spt((0, 30))
+        self.assertTrue(seg.has_point_on_left_side(p3) == 0.0)
+        p3 = spt((0, 50))
+        self.assertTrue(seg.has_point_on_left_side(p3) == 0.0)
+
         seg = sph.SphGcSeg(spt((45, 30)), spt((0, 50)))
         p3 = spt((0, 0))
-        self.assertEqual(seg.has_point_on_left(p3), False)
+        self.assertFalse(seg.has_point_on_left_side(p3) > 0.0)
         p3 = spt((0, 40))
-        self.assertEqual(seg.has_point_on_left(p3), False)
+        self.assertFalse(seg.has_point_on_left_side(p3) > 0.0)
         p3 = spt((50, 50))
-        self.assertEqual(seg.has_point_on_left(p3), True)
+        self.assertTrue(seg.has_point_on_left_side(p3) > 0.0)
         p3 = spt((90, 0))
-        self.assertEqual(seg.has_point_on_left(p3), True)
-        
+        self.assertTrue(seg.has_point_on_left_side(p3) > 0.0)
+
     def test_seg_angle_to_other(self):
         seg1 = sph.SphGcSeg(spt((0, 30)), spt((0, 50)))
         seg2 = sph.SphGcSeg(spt((0, 30)), spt((90, 713)))
@@ -197,7 +209,7 @@ class TestSphGcSeg(tests.IrisTest):
 
         # check colinear 'behind' start point
         a = seg.angle_to_point(spt((0, -20)))
-        self.assertAlmostEqual(a, d2r(-180))  # NOTE: angle is negative?
+        self.assertAlmostEqual(a, d2r(180))
 
         # check same as far end
         a = seg.angle_to_point(spt((0, 50)))
@@ -319,6 +331,41 @@ class TestSphPolygon(tests.IrisTest):
         self.assertEqual(poly.points[2], pts[1])
         self.assertEqual(poly.points[3], pts[2])
         self.assertEqual(poly.points[4], pts[3])
+
+    def test_polygon_contains_point(self):
+        # make a square-ish one
+        points = [(0, 0), (0, 50), (40, 50), (60, -10)]
+        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+
+        # test against all own points...
+        pts = [spt(p) for p in points]
+        for test_pt in pts:
+            self.assertTrue(poly.contains_point(test_pt))
+
+        # test others, within and without..
+        self.assertEqual(poly.contains_point(spt((20, 20))), True)
+        self.assertEqual(poly.contains_point(spt((1, 1))), True)
+        self.assertEqual(poly.contains_point(spt((1, -1))), False)
+        self.assertEqual(poly.contains_point(spt((-1, 1))), False)
+        self.assertEqual(poly.contains_point(spt((1, 30))), True)
+        self.assertEqual(poly.contains_point(spt((-1, 30))), False)
+        self.assertEqual(poly.contains_point(spt((1, 49))), True)
+        self.assertEqual(poly.contains_point(spt((-1, 49))), False)
+        self.assertEqual(poly.contains_point(spt((39, 49))), True)
+        self.assertEqual(poly.contains_point(spt((50, 25))), True)
+        self.assertEqual(poly.contains_point(spt((60, 25))), False)
+
+        self.assertEqual(poly.contains_point(spt((50, -5))), True)
+        self.assertEqual(poly.contains_point(spt((5, -5))), False)
+
+        for lon in [-180, -20, 0, 25, 50, 100, 180]:
+            self.assertEqual(poly.contains_point(spt((-80, lon))), False)
+            self.assertEqual(poly.contains_point(spt((80, lon))), False)
+
+        for lat in [-90, -20, 0, 25, 50, 65, 90]:
+            self.assertEqual(poly.contains_point(spt((lat, -100))), False)
+            self.assertEqual(poly.contains_point(spt((lat, 100))), False)
+
 
 if __name__ == '__main__':
     tests.main()
