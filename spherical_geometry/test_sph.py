@@ -380,6 +380,33 @@ class TestSphPolygon(tests.IrisTest):
             self.assertEqual(poly.contains_point(spt((lat, -100))), False)
             self.assertEqual(poly.contains_point(spt((lat, 100))), False)
 
+    def test_polygon_area(self):
+	# basic quarter-hemisphere = pi/2
+        points = [(0, 0), (0, 90), (90, 0)]
+        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        self.assertAlmostEqual(poly.area(), math.pi / 2)
+
+	# half of quarter-hemisphere = pi/4
+        points = [(0, 0), (0, 45), (90, 0)]
+        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        print 'PART 0-45 : '
+        a = poly.area()
+        print 
+#        self.assertAlmostEqual(poly.area(), math.pi / 4)
+
+	# other half of quarter-hemisphere = pi/4
+        points = [(0, 45), (0, 90), (90, 0)]
+        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        print 'PART 45-90 : '
+        a = poly.area()
+        print 
+#        self.assertAlmostEqual(poly.area(), math.pi / 4)
+
+#	# small square approximation
+#        points = [(20, 20), (20, 21), (21, 21), (21, 20)]
+#        poly = sph.SphAcwConvexPolygon(points, in_degrees=False)
+#        self.assertAlmostEqual(poly.area(), d2r(1) ** 2)
+        
 
 if __name__ == '__main__':
     tests.main()

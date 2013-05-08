@@ -235,9 +235,17 @@ class SphAcwConvexPolygon(object):
         angle_total = 0.0
         edges = self.edge_gcs()
         previous_edge = edges[-1]
+        print '\nPolygon area of:'
+        print '  ', ','.join([str(p) for p in self.points])
         for this_edge in edges:
-            angle_total += previous_edge.angle_to_other(this_edge)
-        return angle_total - math.pi
+            a = previous_edge.angle_to_other(this_edge)
+            print 'from {} to {}: \n  angle=pi*{}'.format(previous_edge, this_edge, a / math.pi)
+            angle_total += a
+            previous_edge = this_edge
+        print '  total angles = pi*', angle_total / math.pi
+        angle_total -= math.pi * (self.n_points - 2)
+        print 'result = pi*', angle_total / math.pi
+        return angle_total
 
     def intersection_with_polygon(self, other):
         # Add output candidates: points from A that are in B, and vice versa
