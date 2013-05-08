@@ -331,6 +331,20 @@ class TestSphPolygon(tests.IrisTest):
         self.assertEqual(poly.points[2], pts[1])
         self.assertEqual(poly.points[3], pts[2])
         self.assertEqual(poly.points[4], pts[3])
+        
+        # testcase for unsuitable points (non-convex)
+        # Whereas this is ok in order given ..
+        points = [(0, 0), (-5, 20), (0, 50), (40, 50), (70, -10)]
+        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        pts = [spt(p) for p in points]
+        for i in range(len(pts)):
+            self.assertEqual(poly.points[i], pts[i])
+        
+        # ..slightly adjusted point#1 (concave between 0+2) means it is not
+        points[1] = (5, 20)
+        with self.assertRaises(ValueError):
+            poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        
 
     def test_polygon_contains_point(self):
         # make a square-ish one
