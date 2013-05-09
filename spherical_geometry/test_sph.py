@@ -3,10 +3,13 @@ Created on May 8, 2013
 
 @author: itpp
 '''
+from iris import tests
 
 import math
 
-from iris import tests
+import numpy as np
+
+import iris.util
 
 import spherical_geometry as sph
 
@@ -19,6 +22,9 @@ def spt(*args, **kwargs):
 
 def d2r(degrees):
     return degrees / 180.0 * math.pi
+
+def r2d(radians):
+    return radians * 180.0 / math.pi
 
 class TestConverts(tests.IrisTest):
     def test_convert_xyz_to_latlon(self):
@@ -195,6 +201,38 @@ class TestSphGcSeg(tests.IrisTest):
         a = seg1.angle_to_other(seg2)
         self.assertAlmostEqual(a, d2r(180))
 
+        def _test_relangle(from_latlon=(0.0, 0.0), atol_degrees=1.0):
+            # Very rough testing of relative angles
+            # Basically, just test that results vary 'reasonably'.
+            y0 = from_latlon[0]
+            x0 = from_latlon[1]
+            d_ang = 1.0
+            seg1 = sph.SphGcSeg(spt((y0, x0)), spt((y0, x0 + d_ang)))
+            results = []
+            # NOTE: at present, does *not* work properly for 'negative' angles
+            # so just test 0..180 for now
+            for ang in np.linspace(0.0, +180.0, 8, endpoint=True):
+                x = x0 + d_ang * math.cos(d2r(ang))
+                y = y0 + d_ang * math.sin(d2r(ang))
+                seg2 = sph.SphGcSeg(spt((y0, x0)), spt((y, x)))
+                a = r2d(seg1.angle_to_other(seg2))
+                if abs(abs(ang) - 180.0) > 0.1:
+                    # Normal checks
+                    results += [a]
+                    ang_err = abs(a - ang)
+                else:
+                    # Special checks, not to fret about +/- 180
+                    ang_err = abs(ang) - abs(a)
+                self.assertLess(ang_err, atol_degrees)
+            self.assertTrue(iris.util.monotonic(np.array(results),
+                                                strict=True))
+
+        _test_relangle((0,0))
+        _test_relangle((0,70))
+        _test_relangle((45,45), atol_degrees=10.0)
+        _test_relangle((80,0), atol_degrees=55)
+        _test_relangle((-65,30), atol_degrees=25)
+
     def test_seg_angle_to_point(self):
         seg = sph.SphGcSeg(spt((0, 30)), spt((0, 50)))
 
@@ -331,7 +369,7 @@ class TestSphPolygon(tests.IrisTest):
         self.assertEqual(poly.points[2], pts[1])
         self.assertEqual(poly.points[3], pts[2])
         self.assertEqual(poly.points[4], pts[3])
-        
+
         # testcase for unsuitable points (non-convex)
         # Whereas this is ok in order given ..
         points = [(0, 0), (-5, 20), (0, 50), (40, 50), (70, -10)]
@@ -339,12 +377,12 @@ class TestSphPolygon(tests.IrisTest):
         pts = [spt(p) for p in points]
         for i in range(len(pts)):
             self.assertEqual(poly.points[i], pts[i])
-        
+
         # ..slightly adjusted point#1 (concave between 0+2) means it is not
         points[1] = (5, 20)
         with self.assertRaises(ValueError):
             poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
-        
+
 
     def test_polygon_contains_point(self):
         # make a square-ish one
@@ -372,6 +410,7 @@ class TestSphPolygon(tests.IrisTest):
         self.assertEqual(poly.contains_point(spt((50, -5))), True)
         self.assertEqual(poly.contains_point(spt((5, -5))), False)
 
+        # test others, that should be outside
         for lon in [-180, -20, 0, 25, 50, 100, 180]:
             self.assertEqual(poly.contains_point(spt((-80, lon))), False)
             self.assertEqual(poly.contains_point(spt((80, lon))), False)
@@ -381,32 +420,48 @@ class TestSphPolygon(tests.IrisTest):
             self.assertEqual(poly.contains_point(spt((lat, 100))), False)
 
     def test_polygon_area(self):
-	# basic quarter-hemisphere = pi/2
+        # basic quarter-hemisphere = pi/2
         points = [(0, 0), (0, 90), (90, 0)]
         poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
         self.assertAlmostEqual(poly.area(), math.pi / 2)
 
-	# half of quarter-hemisphere = pi/4
+        # half of quarter-hemisphere = pi/4
         points = [(0, 0), (0, 45), (90, 0)]
         poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
-        print 'PART 0-45 : '
         a = poly.area()
-        print 
-#        self.assertAlmostEqual(poly.area(), math.pi / 4)
+        self.assertAlmostEqual(poly.area(), math.pi / 4)
 
-	# other half of quarter-hemisphere = pi/4
+        # other half of quarter-hemisphere = pi/4
         points = [(0, 45), (0, 90), (90, 0)]
         poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
-        print 'PART 45-90 : '
         a = poly.area()
-        print 
-#        self.assertAlmostEqual(poly.area(), math.pi / 4)
+        self.assertAlmostEqual(poly.area(), math.pi / 4)
 
-#	# small square approximation
-#        points = [(20, 20), (20, 21), (21, 21), (21, 20)]
-#        poly = sph.SphAcwConvexPolygon(points, in_degrees=False)
-#        self.assertAlmostEqual(poly.area(), d2r(1) ** 2)
-        
+        # small square approximations
+        def _test_small_square(y0, x0, d=1.0, rtol=1e-7):
+            points = [(y0, x0),
+                      (y0, x0 + d),
+                      (y0 + d, x0 + d),
+                      (y0 + d, x0)]
+            a_expect = d2r(d) * d2r(d) * math.cos(d2r(y0 + 0.5 * d))
+            delta = a_expect * rtol
+            poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+            a = poly.area()
+            if abs(a - a_expect) > delta:
+                str = ('\nTolerance failure: '
+                       '_test_small_square(y={},x={},d={},rtol={}):'
+                       '\n  -> rdiff = {:3.2e}'.format(
+                           y0, x0, d, rtol, abs(a - a_expect) / a_expect))
+                print str
+            self.assertAlmostEqual(poly.area(), a_expect, delta=delta)
+
+        _test_small_square(0, 0, rtol=2e-5)
+        _test_small_square(20, 20, rtol=5e-6)
+        _test_small_square(70, -50, rtol=1e-4)
+        _test_small_square(-85, 50, rtol=1e-4)
+        _test_small_square(20, 20, 15, rtol=1e-3)
+        _test_small_square(20, 20, 35, rtol=0.02)
+
 
 if __name__ == '__main__':
     tests.main()

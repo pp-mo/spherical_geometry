@@ -62,7 +62,9 @@ class SphPoint(object):
 
     def dot_product(self, other):
         other = sph_point(other)
-        return sum([a * b for a, b in zip(self.as_xyz(), other.as_xyz())])
+        result = sum([a * b for a, b in zip(self.as_xyz(), other.as_xyz())])
+        # Clip to valid range, so small errors don't break inverse-trig usage
+        return max(-1.0, min(1.0, result))
 
     def cross_product(self, other):
         ax, ay, az = self.as_xyz()
@@ -77,6 +79,10 @@ class SphPoint(object):
             return radians * 180.0 / math.pi
         return 'SphPoint({})'.format(self._ll_str())
 
+    def __repr__(self):
+        return '{}({!r}, {!r})'.format(self.__class__.__name__,
+                                       self.lat, self.lon)
+
     def _ll_str(self):
         def r2d(radians):
             return radians * 180.0 / math.pi
@@ -84,7 +90,7 @@ class SphPoint(object):
 
 
 def sph_point(point, in_degrees=False):
-    """ Convert lat,lon to SphPoint, or return SphPoint unchanged. """
+    """ Make (lat,lon) into SphPoint, or return SphPoint unchanged. """
     if hasattr(point, 'lat'):
         return point
     if len(point) != 2:
@@ -101,26 +107,32 @@ class SphGcSeg(object):
         self.point_a = sph_point(point_a)
         self.point_b = sph_point(point_b)
         self.pole = self.point_b.cross_product(self.point_a)
+        self.colinear_tolerance = 1e-7
+
+    def reverse(self):
+        return SphGcSeg(self.point_b, self.point_a)
 
     def has_point_on_left_side(self, point):
         """
         Returns >0 (left), <1 (right) or =0.0 (close to the line).
 
-        There is a tolerance zone near the line (colinear), where 0.0 is always
-        returned.  So caller uses, for example. '>' or '>=' as required.
+        'self.colinear_tolerance' defines a tolerance zone near the line
+        (i.e. 'nearly colinear'), where 0.0 is always returned.
+        So the caller can use, for example. '>' or '>=' as required, which will
+        automatically ignore 'small' values of the wrong sign.
 
         """
         dot = self.pole.dot_product(point)
-        if abs(dot) < 1e-7:
+        if abs(dot) < self.colinear_tolerance:
             return 0.0
         return -dot
 
     def _cos_angle_to_other(self, other):
-        # Angle from AB to AP
+        # Cosine of angle between self + other
         return self.pole.dot_product(other.pole)
 
     def _cos_angle_to_point(self, point):
-        # Angle from AB to AP, where P = given point
+        # cosine(angle from AB to AP), where P = given point
         if point == self.point_a:
             return 1.0
         seg2 = SphGcSeg(self.point_a, point)
@@ -128,7 +140,7 @@ class SphGcSeg(object):
         return result
 
     def angle_to_other(self, other):
-        # Angle from AB to AP
+        # Angle between self and another segment
         return math.acos(self._cos_angle_to_other(other))
 
     def angle_to_point(self, point):
@@ -143,6 +155,10 @@ class SphGcSeg(object):
         point_b = point_a.antipode()
         return (point_a, point_b)
 
+    def __repr__(self):
+        return '{}({}, {})'.format(self.__class__.__name__,
+                                   repr(self.point_a),
+                                   repr(self.point_b))
     def __str__(self):
         return 'SphGcSeg({!s} -> {!s}, pole={!s}>'.format(
             self.point_a._ll_str(),
@@ -235,16 +251,11 @@ class SphAcwConvexPolygon(object):
         angle_total = 0.0
         edges = self.edge_gcs()
         previous_edge = edges[-1]
-        print '\nPolygon area of:'
-        print '  ', ','.join([str(p) for p in self.points])
         for this_edge in edges:
-            a = previous_edge.angle_to_other(this_edge)
-            print 'from {} to {}: \n  angle=pi*{}'.format(previous_edge, this_edge, a / math.pi)
+            a = previous_edge.reverse().angle_to_other(this_edge)
             angle_total += a
             previous_edge = this_edge
-        print '  total angles = pi*', angle_total / math.pi
         angle_total -= math.pi * (self.n_points - 2)
-        print 'result = pi*', angle_total / math.pi
         return angle_total
 
     def intersection_with_polygon(self, other):
@@ -255,7 +266,7 @@ class SphAcwConvexPolygon(object):
         inters_ab += [gc_a.intersect_points_with_gc(gc_b)
                       for gc_a in self.edge_gcs() for gc_b in other.edge_gcs()]
         inters_ab = itertools.chain.from_iterable(inters_ab)  # ==flatten
-        # Add to output: all A/B intersections within both areas
+        # Add to output: all A/B intersections which are within both areas
         result_points += [p for p in inters_ab
                         if (self.contains_point(p) 
                             and other.contains_point(p))]
