@@ -301,6 +301,12 @@ class TestSphGcSeg(tests.IrisTest):
         self.assertArrayAllClose(pts[0].as_latlon(), p1.antipode().as_latlon(),
                                  atol=1e-7)
 
+        # intersect with self (or colinear) yields 'None'
+        seg1 = sph.SphGcSeg(spt((0, 30)), spt((0, 50)))
+        seg2 = sph.SphGcSeg(spt((0, 70)), spt((0, 80)))
+        self.assertIsNone(seg1.intersection_points_with_other(seg1))
+        self.assertIsNone(seg1.intersection_points_with_other(seg2))
+
 
 class TestSphPolygon(tests.IrisTest):
     def test_polygon_create(self):
@@ -461,6 +467,15 @@ class TestSphPolygon(tests.IrisTest):
         _test_small_square(-85, 50, rtol=1e-4)
         _test_small_square(20, 20, 15, rtol=1e-3)
         _test_small_square(20, 20, 35, rtol=0.02)
+
+    def test_polygon_intersection(self):
+        # test intersect with self = self
+        # make a square-ish one
+        points = [(0, 0), (0, 50), (40, 50), (60, -10)]
+        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        poly2 = poly.intersection_with_polygon(poly)
+        self.assertTrue(all([p1 == p2 for p1, p2 in zip(poly.points,
+                                                        poly2.points)]))
 
 
 if __name__ == '__main__':

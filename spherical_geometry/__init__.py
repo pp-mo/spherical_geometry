@@ -19,10 +19,16 @@ def convert_latlon_to_xyz(lat, lon):
     return (x, y, z)
 
 
+class NoZeroLatlonError(ValueError):
+    def __init__(self, *args, **kwargs):
+        if not args:
+            args = ['Point too close to zero for lat-lon conversion.']
+        super(NoZeroLatlonError, self).__init__(*args, **kwargs)
+
 def convert_xyz_to_latlon(x, y, z):
     mod_sq = (x * x + y * y + z * z)
     if abs(mod_sq) < 1e-7:
-        raise ValueError('Point too close to zero for lat-lon conversion.')
+        raise NoZeroLatlonError()
     lat = math.asin(z / math.sqrt(mod_sq))
     lon = math.atan2(y, x)
     return (lat, lon)
@@ -151,7 +157,12 @@ class SphGcSeg(object):
         return result
 
     def intersection_points_with_other(self, other):
-        point_a = self.pole.cross_product(other.pole)
+        # Return the (two) intersection points with the other segment.
+        # N.B. returns None if the two are parallel
+        try:
+            point_a = self.pole.cross_product(other.pole)
+        except NoZeroLatlonError:
+            return None
         point_b = point_a.antipode()
         return (point_a, point_b)
 
@@ -263,13 +274,16 @@ class SphAcwConvexPolygon(object):
         result_points = [p for p in self.points if other.contains_point(p)]
         result_points += [p for p in other.points if self.contains_point(p)]
         # Calculate all intersections of (extended) edges between A and B
-        inters_ab += [gc_a.intersect_points_with_gc(gc_b)
-                      for gc_a in self.edge_gcs() for gc_b in other.edge_gcs()]
-        inters_ab = itertools.chain.from_iterable(inters_ab)  # ==flatten
+        inters_ab = [gc_a.intersection_points_with_other(gc_b)
+                     for gc_a in self.edge_gcs() for gc_b in other.edge_gcs()]
+        # remove 'None' cases, leaving a list of antipode pairs
+        inters_ab = [x for x in inters_ab if x is not None]
+        # flatten the pairs to a single list of points
+        inters_ab = itertools.chain.from_iterable(inters_ab)
         # Add to output: all A/B intersections which are within both areas
         result_points += [p for p in inters_ab
-                        if (self.contains_point(p) 
-                            and other.contains_point(p))]
+                          if (self.contains_point(p)
+                              and other.contains_point(p))]
         # Convert this bundle of points into a new SphAcwConvexPolygon
         # NOTE: only works because all points are inside original polygon
         edge0 = self.edge_gcs()[0]
