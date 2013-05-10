@@ -2,9 +2,11 @@
 Created on May 8, 2013
 
 @author: itpp
+
 '''
 from iris import tests
 
+import itertools
 import math
 
 import numpy as np
@@ -15,11 +17,19 @@ import spherical_geometry as sph
 
 
 def spt(*args, **kwargs):
-    # wrap sph.sph_point, but default to in_degrees=True
+    # Wrap sph.sph_point, but default to in_degrees=True
     in_degrees = kwargs.pop('in_degrees', True)
     kwargs['in_degrees'] = in_degrees
     return sph.sph_point(*args, **kwargs)
 
+
+def spts(latlon_list):
+    # Convert a list of latlons (in degrees) to SphPoints
+    return [sph.sph_point(p, in_degrees=True) for p in latlon_list]
+
+def spoly(points):
+    # Create a polygon from list of latlons (in degrees)
+    return sph.SphAcwConvexPolygon(points, in_degrees=True)
 
 def d2r(degrees):
     return degrees / 180.0 * math.pi
@@ -149,6 +159,59 @@ class TestSphPoint(tests.IrisTest):
         with self.assertRaises(ValueError):
             pt = pt2.cross_product(pt1)
 
+    def test_points_distance_to(self):
+        pt1 = spt((0, 30))
+        pt2 = spt((0, 60))
+
+        d11 = pt1.distance_to(pt1)
+        self.assertAlmostEqual(d11, 0.0)
+
+        d22 = pt2.distance_to(pt2)
+        self.assertAlmostEqual(d22, 0.0)
+
+        d12 = pt1.distance_to(pt2)
+        d21 = pt2.distance_to(pt1)
+        self.assertAlmostEqual(r2d(d12), 30.0)
+
+        for test_point in [(0, 10), (0, -10), (10, 0), (-10, 0)]:
+            dist = r2d(spt((0, 0)).distance_to(spt(test_point)))
+            self.assertAlmostEqual(
+                dist, 10.0,
+                msg=('distance from (0, 0) to {} = {} degrees, '
+                     'expected 10.0'.format(test_point, dist)))
+
+        dist = r2d(spt((45, 45)).distance_to(spt((45, -45))))
+        self.assertAlmostEqual(dist, 60.0)
+
+        dist = r2d(spt((45, 45)).distance_to(spt((-45, 45))))
+        self.assertAlmostEqual(dist, 90.0)
+
+        # Make test points at each corner of an octahedron, plus odd extra,
+        # (so all iter-distances are nice round multiples of 30deg)
+        test_points = [spt(latlon) for latlon in [
+                          # odd extra test point
+                          (0, 45),
+                          # corners of an octohedron
+                          (90, 0), (-90, 0),
+                          (0, -180), (0, -90), (0, 0), (0, 90)]]
+
+        # Fix all expected inter-point distances (full matrix).
+        test_dists_expect = np.array(
+            [[  0,  90,  90, 135, 135,  45,  45],
+             [ 90,   0, 180,  90,  90,  90,  90],
+             [ 90, 180,   0,  90,  90,  90,  90],
+             [135,  90,  90,   0,  90, 180,  90],
+             [135,  90,  90,  90,   0,  90, 180],
+             [ 45,  90,  90, 180,  90,   0,  90],
+             [ 45,  90,  90,  90, 180,  90,   0]], dtype=np.float)
+
+        # Get distance results from test function.
+        test_dists_got = r2d(np.array(
+            [[p1.distance_to(p2) for p2 in test_points]
+             for p1 in test_points]))
+
+        self.assertArrayAlmostEqual(test_dists_got, test_dists_expect)
+
 
 class TestSphGcSeg(tests.IrisTest):
     def test_seg_basic(self):
@@ -205,7 +268,7 @@ class TestSphGcSeg(tests.IrisTest):
         a = seg1.angle_to_other(seg2)
         self.assertAlmostEqual(a, d2r(180))
 
-        show_relangle_debug = True
+        show_relangle_debug = False
         if show_relangle_debug:
             print
 
@@ -333,6 +396,28 @@ class TestSphGcSeg(tests.IrisTest):
         _test_relangle((80, 0), atol_degrees=55)
         _test_relangle((-65, 30), atol_degrees=25)
 
+    def test_seg_pseudoangle_to_point(self):
+        base_seg = sph.SphGcSeg(spt((0, 0)), spt((0, 10)))
+        x0, y0, d_ang = 0.0, 0.0, 1.0
+        angles, pseudoangles = [], []
+        # Check pseudoangles in same order as true angles, at various points.
+        test_rel_angles = (
+            [-180.1, -180.0, -179.9] +
+            list(np.linspace(-180.0, +180.0, 90.0 / 8, endpoint=True)) +
+            [179.9, 180.0, 180.1])
+        for ang in test_rel_angles:
+            x = d_ang * math.cos(d2r(ang))
+            y = d_ang * math.sin(d2r(ang))
+            test_point = spt((y, x))
+            angles.append(base_seg.angle_to_point(test_point))
+            pseudoangles.append(base_seg.pseudoangle_to_point(test_point))
+#        print 'TEST-ANGLES:\n  ', test_rel_angles
+#        print 'ANGLES:\n  ', angles
+#        print 'PSEUDOANGLES:\n  ', pseudoangles
+        angles_order = np.argsort(angles)
+        pseudoangles_order = np.argsort(pseudoangles)
+        self.assertArrayEqual(angles_order, pseudoangles_order)
+
     def test_seg_intersection(self):
         seg1 = sph.SphGcSeg(spt((0, 30)), spt((0, 50)))
         seg2 = sph.SphGcSeg(spt((0, 30)), spt((60, 30)))
@@ -369,18 +454,24 @@ class TestSphGcSeg(tests.IrisTest):
 
 
 class TestSphPolygon(tests.IrisTest):
+    def _assert_poly_points_are(self, poly, pts, order=None):
+        n_pts = len(pts)
+        assert len(poly.points) == n_pts
+        if order is not None:
+            assert len(order) == n_pts
+            pts = [pts[i] for i in order]
+        self.assertEqual(poly.points, pts)
+
     def test_polygon_create(self):
-        points = [(0, 0), (0, 50), (50, 50)]
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
-        pts = [spt(p) for p in points]
-        for i in range(len(pts)):
-            self.assertEqual(poly.points[i], pts[i])
+        pts = spts([(0, 0), (0, 50), (50, 50)])
+        poly = sph.SphAcwConvexPolygon(pts)
+        self._assert_poly_points_are(poly, pts)
 
         # make it reversed : this forces it to correct the order
-        poly = sph.SphAcwConvexPolygon(points[::-1], in_degrees=True)
-        self.assertEqual(poly.points[0], pts[2])
-        self.assertEqual(poly.points[1], pts[0])
-        self.assertEqual(poly.points[2], pts[1])
+        pts = pts[::-1]
+        correct_order = [0, 2, 1]
+        poly = sph.SphAcwConvexPolygon(pts)
+        self._assert_poly_points_are(poly, pts, correct_order)
 
         # check fails on two points
         points = [(0, 0), (0, 50)]
@@ -388,49 +479,60 @@ class TestSphPolygon(tests.IrisTest):
             poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
 
         # make a square-ish one
-        points = [(0, 0), (0, 50), (40, 50), (60, -10)]
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
-        pts = [spt(p) for p in points]
-        for i in range(len(pts)):
-            self.assertEqual(poly.points[i], pts[i])
+        pts = spts([(0, 0), (0, 50), (40, 50), (60, -10)])
+        poly = sph.SphAcwConvexPolygon(pts)
+        self._assert_poly_points_are(poly, pts)
 
         # check it is ok to have the odd point out of order
-        points = [(0, 0), (0, 50), (40, 50), (60, -10), (15, 55)]
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
-        pts = [spt(p) for p in points]
-        self.assertEqual(poly.points[0], pts[0])
-        self.assertEqual(poly.points[1], pts[1])
-        self.assertEqual(poly.points[2], pts[4])
-        self.assertEqual(poly.points[3], pts[2])
-        self.assertEqual(poly.points[4], pts[3])
+        pts = spts([(0, 0), (0, 50), (40, 50), (60, -10), (15, 55)])
+        correct_order = [0, 1, 4, 2, 3] 
+        poly = sph.SphAcwConvexPolygon(pts)
+        self._assert_poly_points_are(poly, pts, correct_order)
 
         # check still ok if the first two points will no longer be adjacent
-        points = [(0, 0), (0, 50), (40, 50), (70, -10), (-20, 30)]
-        pts = [spt(p) for p in points]
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
-        self.assertEqual(poly.points[0], pts[0])
-        self.assertEqual(poly.points[1], pts[4])
-        self.assertEqual(poly.points[2], pts[1])
-        self.assertEqual(poly.points[3], pts[2])
-        self.assertEqual(poly.points[4], pts[3])
+        pts = spts([(0, 0), (0, 50), (40, 50), (70, -10), (-20, 30)])
+        correct_order = [0, 4, 1, 2, 3]
+        poly = sph.SphAcwConvexPolygon(pts)
+        self._assert_poly_points_are(poly, pts, correct_order)
 
         # testcase for unsuitable points (non-convex)
         # Whereas this is ok..
         points = [(0, 0), (-5, 20), (0, 50), (40, 50), (70, -10)]
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
-        pts = [spt(p) for p in points]
-        for i in range(len(pts)):
-            self.assertEqual(poly.points[i], pts[i])
-
+        sph.SphAcwConvexPolygon(points, in_degrees=True)
         # ..a slightly adjusted point#1 (concave between 0+2) means it is not
         points[1] = (5, 20)
         with self.assertRaises(ValueError):
             poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
 
+    def test_polygon_create_any_order(self):
+        # check correct creation independent of points order
+        # This tests the mechanics of (_is/(_make)_anticlockwise_convex
+        def poly_order_from_0(poly, pts):
+            # Return polygon points list rotated so pts[0] is first
+            n_pts = len(pts)
+            assert len(poly.points) == n_pts
+            order = [pts.index(p) for p in poly.points]
+            assert all([i >= 0 for i in order])
+            i0 = order.index(0)
+            return [order[(i + i0) % n_pts] for i in range(n_pts)]
+
+        # Define 5 polygon test vertices - including some co-linear.
+        pts = spts([[0.0, 0.0],
+                    [0.0, 2.5],
+                    [0.0, 4.0],
+                    [4.0, 1.0],
+                    [4.0, 0.0]])
+        base_poly = sph.SphAcwConvexPolygon(pts)
+        base_points_order = poly_order_from_0(base_poly, pts)
+        for pts_perm in itertools.permutations(pts):
+            poly = sph.SphAcwConvexPolygon(pts_perm)
+            permed_points_order = poly_order_from_0(poly, pts)
+            self.assertEqual(permed_points_order, base_points_order)
+
     def test_polygon_contains_point(self):
         # make a square-ish one
         points = [(0, 0), (0, 50), (40, 50), (60, -10)]
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        poly = spoly(points)
 
         # test against all own points...
         pts = [spt(p) for p in points]
@@ -465,18 +567,18 @@ class TestSphPolygon(tests.IrisTest):
     def test_polygon_area(self):
         # basic quarter-hemisphere = pi/2
         points = [(0, 0), (0, 90), (90, 0)]
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        poly = spoly(points)
         self.assertAlmostEqual(poly.area(), math.pi / 2)
 
         # half of quarter-hemisphere = pi/4
         points = [(0, 0), (0, 45), (90, 0)]
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        poly = spoly(points)
         a = poly.area()
         self.assertAlmostEqual(poly.area(), math.pi / 4)
 
         # other half of quarter-hemisphere = pi/4
         points = [(0, 45), (0, 90), (90, 0)]
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        poly = spoly(points)
         a = poly.area()
         self.assertAlmostEqual(poly.area(), math.pi / 4)
 
@@ -488,7 +590,7 @@ class TestSphPolygon(tests.IrisTest):
                       (y0 + d, x0)]
             a_expect = d2r(d) * d2r(d) * math.cos(d2r(y0 + 0.5 * d))
             delta = a_expect * rtol
-            poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+            poly = spoly(points)
             a = poly.area()
             if abs(a - a_expect) > delta:
                 str = ('\nTolerance failure: '
@@ -509,10 +611,28 @@ class TestSphPolygon(tests.IrisTest):
         # test intersect with self = self
         # make a square-ish one
         points = [(0, 0), (0, 50), (40, 50), (60, -10)]
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
+        poly = spoly(points)
         poly2 = poly.intersection_with_polygon(poly)
+        # correct order by adding explicit first point same as original ...
+        poly2 = sph.SphAcwConvexPolygon([spt((0, 0))]+poly2.points)
         self.assertTrue(all([p1 == p2 for p1, p2 in zip(poly.points,
                                                         poly2.points)]))
+
+        # check on a misses-altogether case
+        points1 = [(0, 0), (0, 40), (20, 20)]
+        points2 = [(20, 21), (0, 41), (10, 50)]
+        poly1 = spoly(points1)
+        poly2 = spoly(points2)
+        poly3 = poly1.intersection_with_polygon(poly2)
+        self.assertIsNone(poly3)
+
+        # what happens when 2 touch at an edge ?
+        points1 = [(0, 0), (0, 40), (40, 40)]
+        points2 = [(0, 40), (40, 40), (10, 50)]
+        poly1 = spoly(points1)
+        poly2 = spoly(points2)
+        poly3 = poly1.intersection_with_polygon(poly2)
+        self.assertIsNone(poly3)
 
         def poly_has_point_near(poly, latlon, tolerance_degrees=0.5):
             y, x = latlon
@@ -521,20 +641,22 @@ class TestSphPolygon(tests.IrisTest):
                       (y - d, x + d),
                       (y + d, x + d),
                       (y + d, x - d)]
-            box = sph.SphAcwConvexPolygon(points, in_degrees=True)
+            box = spoly(points)
             hits = [box.contains_point(p) for p in poly.points]
             result = any(hits)
             if not result:
-                print 'FAIL:'
+                print
+                print 'NEAR-POINT SEARCH FAILED:'
                 print 'poly = ', ', '.join([p._ll_str() for p in poly.points])
+                print 'point = ', latlon
                 print 'box = ', ', '.join([p._ll_str() for p in box.points])
             return result
 
         # test a simple intersection case
         points1 = [(10, 0), (10, 30), (20, 30), (20, 0)]
         points2 = [(0, 10), (0, 20), (30, 20), (30, 10)]
-        poly1 = sph.SphAcwConvexPolygon(points1, in_degrees=True)
-        poly2 = sph.SphAcwConvexPolygon(points2, in_degrees=True)
+        poly1 = spoly(points1)
+        poly2 = spoly(points2)
         poly3 = poly1.intersection_with_polygon(poly2)
         self.assertEqual(poly3.n_points, 4)
         tol_d = 1.5
@@ -546,8 +668,8 @@ class TestSphPolygon(tests.IrisTest):
         # more complex case : diamond X square --> octagon...
         points1 = [(-15, -15), (-15, 15), (15, 15), (15, -15)]
         points2 = [(-20, 0), (0, 20), (20, 0), (0, -20)]
-        poly1 = sph.SphAcwConvexPolygon(points1, in_degrees=True)
-        poly2 = sph.SphAcwConvexPolygon(points2, in_degrees=True)
+        poly1 = spoly(points1)
+        poly2 = spoly(points2)
         poly3 = poly1.intersection_with_polygon(poly2)
         self.assertEqual(poly3.n_points, 8)
         tol_d = 1.5
@@ -559,6 +681,28 @@ class TestSphPolygon(tests.IrisTest):
         self.assertTrue(poly_has_point_near(poly3, (-5, -15), tol_d))
         self.assertTrue(poly_has_point_near(poly3, (-15, -5), tol_d))
         self.assertTrue(poly_has_point_near(poly3, (-15, 5), tol_d))
+
+    def test_polygon_center_and_max_radius(self):
+        # Just do some cases with "easy" answers
+        poly = spoly([(0, -15), (15, 0), (0, 15), (-15, 0)])
+        centre, radius = poly.centre_and_max_radius()
+        self.assertEqual(centre, spt((0, 0)))
+        self.assertAlmostEqual(r2d(radius), 15.0)
+
+        poly = spoly([(0, -15), (50, 0), (0, 15), (-50, 0)])
+        centre, radius = poly.centre_and_max_radius()
+        self.assertEqual(centre, spt((0, 0)))
+        self.assertAlmostEqual(r2d(radius), 50.0)
+
+        poly = spoly([(45, 0), (45, 90), (45, 180), (45, -90)])
+        centre, radius = poly.centre_and_max_radius()
+        self.assertEqual(centre, spt((90, 0)))
+        self.assertAlmostEqual(r2d(radius), 45.0)
+
+        poly = spoly([(0, -45), (45, -90), (0, 225), (-45, -90)])
+        centre, radius = poly.centre_and_max_radius()
+        self.assertEqual(centre, spt((0, -90)))
+        self.assertAlmostEqual(r2d(radius), 45.0)
 
 
 if __name__ == '__main__':
