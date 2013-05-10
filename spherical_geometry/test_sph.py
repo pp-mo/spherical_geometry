@@ -205,7 +205,7 @@ class TestSphGcSeg(tests.IrisTest):
         a = seg1.angle_to_other(seg2)
         self.assertAlmostEqual(a, d2r(180))
 
-        show_relangle_debug = True
+        show_relangle_debug = False
         if show_relangle_debug:
             print
 
@@ -513,6 +513,22 @@ class TestSphPolygon(tests.IrisTest):
         poly2 = poly.intersection_with_polygon(poly)
         self.assertTrue(all([p1 == p2 for p1, p2 in zip(poly.points,
                                                         poly2.points)]))
+
+        # check on a misses-altogether case
+        points1 = [(0, 0), (0, 40), (20, 20)]
+        points2 = [(20, 21), (0, 41), (10, 50)]
+        poly1 = sph.SphAcwConvexPolygon(points1, in_degrees=True)
+        poly2 = sph.SphAcwConvexPolygon(points2, in_degrees=True)
+        poly3 = poly1.intersection_with_polygon(poly2)
+        self.assertIsNone(poly3)
+
+        # what happens when 2 touch at an edge ?
+        points1 = [(0, 0), (0, 40), (40, 40)]
+        points2 = [(0, 40), (40, 40), (10, 50)]
+        poly1 = sph.SphAcwConvexPolygon(points1, in_degrees=True)
+        poly2 = sph.SphAcwConvexPolygon(points2, in_degrees=True)
+        poly3 = poly1.intersection_with_polygon(poly2)
+        self.assertIsNone(poly3)
 
         def poly_has_point_near(poly, latlon, tolerance_degrees=0.5):
             y, x = latlon

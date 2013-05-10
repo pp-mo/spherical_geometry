@@ -28,7 +28,7 @@ class ZeroPointLatlonError(ValueError):
 
 def convert_xyz_to_latlon(x, y, z):
     mod_sq = (x * x + y * y + z * z)
-    if abs(mod_sq) < 1e-7:
+    if abs(mod_sq) < 1e-15:
         raise ZeroPointLatlonError()
     lat = math.asin(z / math.sqrt(mod_sq))
     lon = math.atan2(y, x)
@@ -322,8 +322,11 @@ class SphAcwConvexPolygon(object):
                           if (p not in result_points
                               and self.contains_point(p)
                               and other.contains_point(p))]
-        # Convert this bundle of points into a new SphAcwConvexPolygon
-        return SphAcwConvexPolygon(points=result_points)
+        if len(result_points) < 3:
+            return None
+        else:
+            # Convert this bundle of points into a new SphAcwConvexPolygon
+            return SphAcwConvexPolygon(points=result_points)
 
     def __repr__(self):
         return '{}({})'.format(self.__class__.__name__,
