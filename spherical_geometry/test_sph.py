@@ -20,11 +20,14 @@ def spt(*args, **kwargs):
     kwargs['in_degrees'] = in_degrees
     return sph.sph_point(*args, **kwargs)
 
+
 def d2r(degrees):
     return degrees / 180.0 * math.pi
 
+
 def r2d(radians):
     return radians * 180.0 / math.pi
+
 
 class TestConverts(tests.IrisTest):
     def test_convert_xyz_to_latlon(self):
@@ -34,7 +37,7 @@ class TestConverts(tests.IrisTest):
 
         _test_xyz_latlon((0, 0, 1), (d2r(90), 0.0))
         _test_xyz_latlon((0, 0, 0.01), (d2r(90), 0.0))
-        _test_xyz_latlon((1, 0, 1.0), (d2r(45) , 0.0))
+        _test_xyz_latlon((1, 0, 1.0), (d2r(45), 0.0))
         _test_xyz_latlon((-1, 0, 1.0), (d2r(45), d2r(180)))
         _test_xyz_latlon((1.0, 0, 0), (0.0, 0.0))
         _test_xyz_latlon((1.0, 1.0, 0), (0.0, d2r(45)))
@@ -52,7 +55,7 @@ class TestConverts(tests.IrisTest):
 
         rv2 = 1.0 / math.sqrt(2)
         _test_latlon_xyz((d2r(90), 0.0), (0, 0, 1.0))
-        _test_latlon_xyz((d2r(45) , 0.0), (rv2, 0, rv2))
+        _test_latlon_xyz((d2r(45), 0.0), (rv2, 0, rv2))
         _test_latlon_xyz((d2r(45), d2r(180)), (-rv2, 0, rv2))
         _test_latlon_xyz((0.0, 0.0), (1.0, 0, 0))
         _test_latlon_xyz((0.0, d2r(45)), (rv2, rv2, 0))
@@ -60,6 +63,7 @@ class TestConverts(tests.IrisTest):
         _test_latlon_xyz((0.0, -d2r(180 - 45)), (-rv2, -rv2, 0))
         _test_latlon_xyz((0.0, -d2r(90)), (0.0, -1.0, 0))
         _test_latlon_xyz((-d2r(45), d2r(45)), (0.5, 0.5, -rv2))
+
 
 class TestSphPoint(tests.IrisTest):
     def test_point_basic(self):
@@ -123,19 +127,19 @@ class TestSphPoint(tests.IrisTest):
         pt1 = spt((0, 30))
         pt2 = spt((90, 60))
         pt = pt1.cross_product(pt2)
-        px =  spt((0, -60))
+        px = spt((0, -60))
         self.assertArrayAllClose(pt.as_latlon(), px.as_latlon(), atol=1e-7)
         pt = pt2.cross_product(pt1)
-        px =  spt((0, 120))
+        px = spt((0, 120))
         self.assertArrayAllClose(pt.as_latlon(), px.as_latlon(), atol=1e-7)
 
         pt1 = spt((45, 60))
         pt2 = spt((-45, 60))
         pt = pt1.cross_product(pt2)
-        px =  spt((0, 150))
+        px = spt((0, 150))
         self.assertArrayAllClose(pt.as_latlon(), px.as_latlon(), atol=1e-7)
         pt = pt2.cross_product(pt1)
-        px =  spt((0, -30))
+        px = spt((0, -30))
         self.assertArrayAllClose(pt.as_latlon(), px.as_latlon(), atol=1e-7)
 
         pt1 = spt((45, 60))
@@ -201,7 +205,12 @@ class TestSphGcSeg(tests.IrisTest):
         a = seg1.angle_to_other(seg2)
         self.assertAlmostEqual(a, d2r(180))
 
+        show_relangle_debug = True
+        if show_relangle_debug:
+            print
+
         def _test_relangle(from_latlon=(0.0, 0.0), atol_degrees=1.0):
+            # Test segments constructed at multiple angles to a base-point.
             # Very rough testing of relative angles
             # Basically, just test that results vary 'reasonably'.
             y0 = from_latlon[0]
@@ -209,13 +218,20 @@ class TestSphGcSeg(tests.IrisTest):
             d_ang = 1.0
             seg1 = sph.SphGcSeg(spt((y0, x0)), spt((y0, x0 + d_ang)))
             results = []
+            if show_relangle_debug:
+                print
+                print 'Test at={} tol={:5.1f}'.format(from_latlon,
+                                                      atol_degrees)
             # NOTE: at present, does *not* work properly for 'negative' angles
             # so just test 0..180 for now
-            for ang in np.linspace(0.0, +180.0, 8, endpoint=True):
+            for ang in np.linspace(0.0, +180.0, 9, endpoint=True):
                 x = x0 + d_ang * math.cos(d2r(ang))
                 y = y0 + d_ang * math.sin(d2r(ang))
                 seg2 = sph.SphGcSeg(spt((y0, x0)), spt((y, x)))
                 a = r2d(seg1.angle_to_other(seg2))
+                if show_relangle_debug:
+                    print 'at={} ang={:7.1f} --> {:7.1f}'.format(from_latlon,
+                                                                 ang, a)
                 if abs(abs(ang) - 180.0) > 0.1:
                     # Normal checks
                     results += [a]
@@ -227,11 +243,12 @@ class TestSphGcSeg(tests.IrisTest):
             self.assertTrue(iris.util.monotonic(np.array(results),
                                                 strict=True))
 
-        _test_relangle((0,0))
-        _test_relangle((0,70))
-        _test_relangle((45,45), atol_degrees=10.0)
-        _test_relangle((80,0), atol_degrees=55)
-        _test_relangle((-65,30), atol_degrees=25)
+        # Do multiple angles test with different basepoints.
+        _test_relangle((0, 0))
+        _test_relangle((0, 70))
+        _test_relangle((45, 45), atol_degrees=15.0)
+        _test_relangle((80, 0), atol_degrees=55)
+        _test_relangle((-65, 30), atol_degrees=25)
 
     def test_seg_angle_to_point(self):
         seg = sph.SphGcSeg(spt((0, 30)), spt((0, 50)))
@@ -257,7 +274,6 @@ class TestSphGcSeg(tests.IrisTest):
         a = seg.angle_to_point(spt((0, 30)))
         self.assertAlmostEqual(a, 0.0)
 
-
         a = seg.angle_to_point(spt((1, -20)))
         self.assertAlmostEqual(a, d2r(178.695), delta=d2r(0.005))
         a = seg.angle_to_point(spt((-1, -20)))
@@ -272,6 +288,50 @@ class TestSphGcSeg(tests.IrisTest):
         a = seg.angle_to_point(spt((-20, 50)))
         self.assertAlmostEqual(a, d2r(-46.7808), delta=d2r(0.005))
             # NOTE: this one not exact, because of cos scaling
+
+        show_relangle_debug = False
+        if show_relangle_debug:
+            print
+
+        def _test_relangle(from_latlon=(0.0, 0.0), atol_degrees=1.0):
+            # Test with points offset at multiple angles from a segment base.
+            # Very rough testing of relative angles
+            # Basically, just test that results vary 'reasonably'.
+            y0 = from_latlon[0]
+            x0 = from_latlon[1]
+            d_ang = 1.0
+            seg1 = sph.SphGcSeg(spt((y0, x0)), spt((y0, x0 + d_ang)))
+            results = []
+            if show_relangle_debug:
+                print
+                print 'Test at={} tol={:5.1f}'.format(from_latlon,
+                                                      atol_degrees)
+            # NOTE: the point-angle function *does* work for negative angles
+            for ang in np.linspace(-180.0, +180.0, 17, endpoint=True):
+                x = x0 + d_ang * math.cos(d2r(ang))
+                y = y0 + d_ang * math.sin(d2r(ang))
+                point = spt((y, x))
+                a = r2d(seg1.angle_to_point(point))
+                if show_relangle_debug:
+                    print 'at={} ang={:7.1f} --> {:7.1f}'.format(from_latlon,
+                                                                 ang, a)
+                if abs(abs(ang) - 180.0) > 0.1:
+                    # Normal checks
+                    results += [a]
+                    ang_err = abs(a - ang)
+                else:
+                    # Special checks, not to fret about +/- 180
+                    ang_err = abs(ang) - abs(a)
+                self.assertLess(ang_err, atol_degrees)
+            self.assertTrue(iris.util.monotonic(np.array(results),
+                                                strict=True))
+
+        # Test with point at various lat-lon offsets to a segment base point.
+        _test_relangle((0, 0))
+        _test_relangle((0, 70))
+        _test_relangle((45, 45), atol_degrees=12.0)
+        _test_relangle((80, 0), atol_degrees=55)
+        _test_relangle((-65, 30), atol_degrees=25)
 
     def test_seg_intersection(self):
         seg1 = sph.SphGcSeg(spt((0, 30)), spt((0, 50)))
@@ -313,22 +373,14 @@ class TestSphPolygon(tests.IrisTest):
         points = [(0, 0), (0, 50), (50, 50)]
         poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
         pts = [spt(p) for p in points]
-#        print
-#        for i in range(len(pts)):
-#            print 'poly.point[{i}] = {poly_pt}, pts[{i}] = {pts_pt}'.format(
-#                i=i, poly_pt=poly.points[i], pts_pt=pts[i])
         for i in range(len(pts)):
             self.assertEqual(poly.points[i], pts[i])
 
         # make it reversed : this forces it to correct the order
         poly = sph.SphAcwConvexPolygon(points[::-1], in_degrees=True)
-#        print 'poly...'
-#        for i in range(len(pts)):
-#            print 'poly.point[{i}] = {poly_pt}, pts[{i}] = {pts_pt}'.format(
-#                i=i, poly_pt=poly.points[i], pts_pt=pts[i])
-        self.assertEqual(poly.points[0], pts[1])
-        self.assertEqual(poly.points[1], pts[2])
-        self.assertEqual(poly.points[2], pts[0])
+        self.assertEqual(poly.points[0], pts[2])
+        self.assertEqual(poly.points[1], pts[0])
+        self.assertEqual(poly.points[2], pts[1])
 
         # check fails on two points
         points = [(0, 0), (0, 50)]
@@ -346,30 +398,16 @@ class TestSphPolygon(tests.IrisTest):
         points = [(0, 0), (0, 50), (40, 50), (60, -10), (15, 55)]
         poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
         pts = [spt(p) for p in points]
-#        print 'poly...'
-#        for i in range(len(pts)):
-#            print 'poly.point[{i}] = {poly_pt}, pts[{i}] = {pts_pt}'.format(
-#                i=i, poly_pt=poly.points[i], pts_pt=pts[i])
         self.assertEqual(poly.points[0], pts[0])
         self.assertEqual(poly.points[1], pts[1])
         self.assertEqual(poly.points[2], pts[4])
         self.assertEqual(poly.points[3], pts[2])
         self.assertEqual(poly.points[4], pts[3])
 
-        # check *not* ok if the first two points would no longer be adjacent
+        # check still ok if the first two points will no longer be adjacent
         points = [(0, 0), (0, 50), (40, 50), (70, -10), (-20, 30)]
-        with self.assertRaises(ValueError):
-            poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
-
-        # check *can* make this with a suitable reference edge to work from...
-        ref_seg = sph.SphGcSeg(spt((0, 0)), spt((-20, 30)))
-        poly = sph.SphAcwConvexPolygon(points, in_degrees=True,
-                                       ordering_from_edge=ref_seg)
         pts = [spt(p) for p in points]
-#        print 'poly...'
-#        for i in range(len(pts)):
-#            print 'poly.point[{i}] = {poly_pt}, pts[{i}] = {pts_pt}'.format(
-#                i=i, poly_pt=poly.points[i], pts_pt=pts[i])
+        poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
         self.assertEqual(poly.points[0], pts[0])
         self.assertEqual(poly.points[1], pts[4])
         self.assertEqual(poly.points[2], pts[1])
@@ -377,18 +415,17 @@ class TestSphPolygon(tests.IrisTest):
         self.assertEqual(poly.points[4], pts[3])
 
         # testcase for unsuitable points (non-convex)
-        # Whereas this is ok in order given ..
+        # Whereas this is ok..
         points = [(0, 0), (-5, 20), (0, 50), (40, 50), (70, -10)]
         poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
         pts = [spt(p) for p in points]
         for i in range(len(pts)):
             self.assertEqual(poly.points[i], pts[i])
 
-        # ..slightly adjusted point#1 (concave between 0+2) means it is not
+        # ..a slightly adjusted point#1 (concave between 0+2) means it is not
         points[1] = (5, 20)
         with self.assertRaises(ValueError):
             poly = sph.SphAcwConvexPolygon(points, in_degrees=True)
-
 
     def test_polygon_contains_point(self):
         # make a square-ish one
@@ -477,7 +514,52 @@ class TestSphPolygon(tests.IrisTest):
         self.assertTrue(all([p1 == p2 for p1, p2 in zip(poly.points,
                                                         poly2.points)]))
 
+        def poly_has_point_near(poly, latlon, tolerance_degrees=0.5):
+            y, x = latlon
+            d = tolerance_degrees / 2
+            points = [(y - d, x - d),
+                      (y - d, x + d),
+                      (y + d, x + d),
+                      (y + d, x - d)]
+            box = sph.SphAcwConvexPolygon(points, in_degrees=True)
+            hits = [box.contains_point(p) for p in poly.points]
+            result = any(hits)
+            if not result:
+                print 'FAIL:'
+                print 'poly = ', ', '.join([p._ll_str() for p in poly.points])
+                print 'box = ', ', '.join([p._ll_str() for p in box.points])
+            return result
+
+        # test a simple intersection case
+        points1 = [(10, 0), (10, 30), (20, 30), (20, 0)]
+        points2 = [(0, 10), (0, 20), (30, 20), (30, 10)]
+        poly1 = sph.SphAcwConvexPolygon(points1, in_degrees=True)
+        poly2 = sph.SphAcwConvexPolygon(points2, in_degrees=True)
+        poly3 = poly1.intersection_with_polygon(poly2)
+        self.assertEqual(poly3.n_points, 4)
+        tol_d = 1.5
+        self.assertTrue(poly_has_point_near(poly3, (10, 10), tol_d))
+        self.assertTrue(poly_has_point_near(poly3, (10, 20), tol_d))
+        self.assertTrue(poly_has_point_near(poly3, (20, 20), tol_d))
+        self.assertTrue(poly_has_point_near(poly3, (20, 10), tol_d))
+
+        # more complex case : diamond X square --> octagon...
+        points1 = [(-15, -15), (-15, 15), (15, 15), (15, -15)]
+        points2 = [(-20, 0), (0, 20), (20, 0), (0, -20)]
+        poly1 = sph.SphAcwConvexPolygon(points1, in_degrees=True)
+        poly2 = sph.SphAcwConvexPolygon(points2, in_degrees=True)
+        poly3 = poly1.intersection_with_polygon(poly2)
+        self.assertEqual(poly3.n_points, 8)
+        tol_d = 1.5
+        self.assertTrue(poly_has_point_near(poly3, (-5, 15), tol_d))
+        self.assertTrue(poly_has_point_near(poly3, (5, 15), tol_d))
+        self.assertTrue(poly_has_point_near(poly3, (15, 5), tol_d))
+        self.assertTrue(poly_has_point_near(poly3, (15, -5), tol_d))
+        self.assertTrue(poly_has_point_near(poly3, (5, -15), tol_d))
+        self.assertTrue(poly_has_point_near(poly3, (-5, -15), tol_d))
+        self.assertTrue(poly_has_point_near(poly3, (-15, -5), tol_d))
+        self.assertTrue(poly_has_point_near(poly3, (-15, 5), tol_d))
+
 
 if __name__ == '__main__':
     tests.main()
-

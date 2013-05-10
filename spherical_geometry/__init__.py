@@ -19,16 +19,17 @@ def convert_latlon_to_xyz(lat, lon):
     return (x, y, z)
 
 
-class NoZeroLatlonError(ValueError):
+class ZeroPointLatlonError(ValueError):
     def __init__(self, *args, **kwargs):
         if not args:
             args = ['Point too close to zero for lat-lon conversion.']
-        super(NoZeroLatlonError, self).__init__(*args, **kwargs)
+        super(ZeroPointLatlonError, self).__init__(*args, **kwargs)
+
 
 def convert_xyz_to_latlon(x, y, z):
     mod_sq = (x * x + y * y + z * z)
     if abs(mod_sq) < 1e-7:
-        raise NoZeroLatlonError()
+        raise ZeroPointLatlonError()
     lat = math.asin(z / math.sqrt(mod_sq))
     lon = math.atan2(y, x)
     return (lat, lon)
@@ -147,6 +148,10 @@ class SphGcSeg(object):
 
     def angle_to_other(self, other):
         # Angle between self and another segment
+        # NOTE: at present relies on dot product, so cannot resolve -ve angles.
+        # As these are segments, not just GCs, this could be fixed.
+        # The existing is sufficient for the area calculations, which is all
+        # it's currently used for.
         return math.acos(self._cos_angle_to_other(other))
 
     def angle_to_point(self, point):
@@ -161,7 +166,7 @@ class SphGcSeg(object):
         # N.B. returns None if the two are parallel
         try:
             point_a = self.pole.cross_product(other.pole)
-        except NoZeroLatlonError:
+        except ZeroPointLatlonError:
             return None
         point_b = point_a.antipode()
         return (point_a, point_b)
@@ -170,81 +175,111 @@ class SphGcSeg(object):
         return '{}({}, {})'.format(self.__class__.__name__,
                                    repr(self.point_a),
                                    repr(self.point_b))
+
     def __str__(self):
-        return 'SphGcSeg({!s} -> {!s}, pole={!s}>'.format(
+        return 'SphSeg({!s} -> {!s}, pole={!s}>'.format(
             self.point_a._ll_str(),
             self.point_b._ll_str(),
             self.pole._ll_str())
 
 
+class TooFewPointsForPolygonError(ValueError):
+    def __init__(self, *args, **kwargs):
+        if not args:
+            args = ['Polygon must have at least 3 points.']
+        super(TooFewPointsForPolygonError, self).__init__(*args, **kwargs)
+
+
+class NonConvexPolygonError(ValueError):
+    def __init__(self, *args, **kwargs):
+        if not args:
+            args = ['Polygon points cannot be reordered to make it convex.']
+        super(NonConvexPolygonError, self).__init__(*args, **kwargs)
+
+
 class SphAcwConvexPolygon(object):
-    def __init__(self, points=[], in_degrees=False, ordering_from_edge=None):
-        self.points = [sph_point(point, in_degrees=in_degrees)
-                       for point in points]
+    def __init__(self, points=[], in_degrees=False):
+        self._set_points([sph_point(point, in_degrees=in_degrees)
+                          for point in points])
+        # Remove any initial duplicate points to allow initial AcwConvex check
+        self._remove_duplicate_points()
+        # Rationalise points as required to make them anticlockwise-convex
+        self._make_anticlockwise_convex()
+
+    def _set_points(self, points):
+        # Assign to our points, check length and uncache edges
+        self.points = points
+        self._edges = None
         self.n_points = len(points)
         if self.n_points < 3:
-            raise ValueError('Polygon must have at least 3 points.')
-        self._edges = None
-        self._make_anticlockwise_convex(ordering_from_edge=ordering_from_edge)
+            raise TooFewPointsForPolygonError()
+
+    def _remove_duplicate_points(self):
+        # Remove duplicate adjacent points so all angles can be calculated.
+        # Only within current ordering: can still have duplicates elsewhere.
+        points = self.points
+        prev_points = [None] + points[:-1]
+        points = [this for this, prev in zip(points, prev_points)
+                  if prev is None or this != prev]
+        self._set_points(points)
 
     def _is_anticlockwise_convex(self):
-        # Check if our points are arranged in a convex anticlockwise chain
-        # Optionally, raise an error if not
+        # Check if our points are arranged in a convex anticlockwise chain.
+        # To call this, must be able to calculate edges --> must have no
+        # adjacent duplicated points.
         edges = self.edge_gcs()
-        result = True
-        preceding_edge = edges[-1]
-        for this_edge in edges:
-            if preceding_edge.has_point_on_left_side(this_edge.point_b) < 0.0:
-                result = False
-                break
-            preceding_edge = this_edge
-        return result
+        previous_edges = edges[-1:] + edges[:-1]
+        return all([prev.has_point_on_left_side(this.point_b) >= 0.0
+                    for this, prev in zip(edges, previous_edges)])
 
-    def _make_anticlockwise_convex(self, ordering_from_edge=None):
-        if self._is_anticlockwise_convex():
-            return
-        if ordering_from_edge is None:
-            # Grab data from first edge, and 'freeze' the first two points
+    def _make_anticlockwise_convex(self):
+        # Reorder points if required to give anticlockwise convex.
+        # Raise error if not possible.
+        retrying = False
+        while True:
+            if self._is_anticlockwise_convex():
+                return
+            # Choose any-old edge as a reference for ordering the points
             edge0 = self.edge_gcs()[0]
-            points = self.points[2:]
-            fixed_points = self.points[:2]
-            fixed_angles = [-0.02, -0.01]
-        else:
-            # Use the given edge as a reference, so can sort *all* points
-            edge0 = ordering_from_edge
             points = self.points
-            fixed_points = []
-            fixed_angles = []
-        # Invalidate edges cache as we are about to reorder all the points
-        self._edges = None
-        # Calculate angles from reference edge to all other points
-        angles = [edge0.angle_to_point(p) for p in points]
-        eps = 1.0e-7
-        max_valid_angle = math.pi + eps
-        min_valid_angle = -eps
-        # Sort into angle order (forward or reverse as seems best)
-        # Fix the first two angles, to avoid any problems.
-        if all([x > min_valid_angle for x in angles]):
-            # Try this with first 2 points in correct order
-            points = fixed_points + points
-            angles = fixed_angles + angles
-        else:
-            # Try with first 2 points in reverse order
-            points = fixed_points[::-1] + points
-            angles = fixed_angles + [-x for x in angles]
-        # Check for all valid angles : NOTE first two points must be suitable.
-        if any([a > max_valid_angle or a < min_valid_angle
-                for a in angles[2:]]):
-            raise ValueError('SphAcwConvexPolygon cannot be made from given '
-                             'points.')
-        points_and_angles = zip(points, angles)
-        points_and_angles_sorted = sorted(points_and_angles,
-                                          key=lambda p_and_a: p_and_a[1])
-        self.points = [p_and_a[0] for p_and_a in points_and_angles_sorted]
+            # Calculate angles from reference edge to all other points
+            angles = [edge0.angle_to_point(p) for p in points]
+            # Find "rightmost" point of the rest and move it to [1] position
+            ind_rightmost = 1 + np.argmin(angles[1:])
+            points = [points[0], points[ind_rightmost]] + \
+                points[1:ind_rightmost] + points[ind_rightmost+1:]
+            # Make a new reference segment from new [0:1]
+            if points[0] == points[1]:
+                raise NonConvexPolygonError()
+            edge0 = SphGcSeg(points[0], points[1])
+            # Recalculate all angles relative to this
+            angles = [edge0.angle_to_point(p) for p in points]
+            eps = 1.0e-7
+            max_valid_angle = math.pi + eps
+            min_valid_angle = -eps
+            # Check for all valid angles
+            if any([a > max_valid_angle or a < min_valid_angle
+                    for a in angles]):
+                raise NonConvexPolygonError()
+            # Sort all points into correct order
+            points_and_angles = zip(points, angles)
+            points_and_angles_sorted = sorted(points_and_angles,
+                                              key=lambda p_and_a: p_and_a[1])
+            new_points = [p_and_a[0] for p_and_a in points_and_angles_sorted]
+            # Remove duplicates + repeat if there were any...
+            self._set_points(new_points)
+            self._remove_duplicate_points()
+            if self.points == new_points:
+                # No duplicates : should now be ok
+                break
+            # Reordering produced duplicate points -> retry whole thing.
+            if retrying:
+                # Should only ever happen once !
+                raise Exception('Unexpected loop in polygon reordering.')
+            retrying = True
         if not self._is_anticlockwise_convex():
-            raise ValueError(
-                'SphAcwConvexPolygon points cannot be reordered to make it '
-                'convex.')
+            # Reordered, but still not in desired state
+            raise NonConvexPolygonError()
 
     def edge_gcs(self):
         if self._edges is None:
@@ -271,23 +306,29 @@ class SphAcwConvexPolygon(object):
 
     def intersection_with_polygon(self, other):
         # Add output candidates: points from A that are in B, and vice versa
-        result_points = [p for p in self.points if other.contains_point(p)]
-        result_points += [p for p in other.points if self.contains_point(p)]
+        result_points = [p for p in self.points
+                         if other.contains_point(p) and p not in other.points]
+        result_points += [p for p in other.points
+                          if self.contains_point(p) and p not in result_points]
         # Calculate all intersections of (extended) edges between A and B
         inters_ab = [gc_a.intersection_points_with_other(gc_b)
                      for gc_a in self.edge_gcs() for gc_b in other.edge_gcs()]
         # remove 'None' cases, leaving a list of antipode pairs
         inters_ab = [x for x in inters_ab if x is not None]
         # flatten the pairs to a single list of points
-        inters_ab = itertools.chain.from_iterable(inters_ab)
-        # Add to output: all A/B intersections which are within both areas
+        inters_ab = [x for x in itertools.chain.from_iterable(inters_ab)]
+        # Add any intersections which are: inside both, not already seen
         result_points += [p for p in inters_ab
-                          if (self.contains_point(p)
+                          if (p not in result_points
+                              and self.contains_point(p)
                               and other.contains_point(p))]
         # Convert this bundle of points into a new SphAcwConvexPolygon
-        # NOTE: only works because all points are inside original polygon
-        edge0 = self.edge_gcs()[0]
-        return SphAcwConvexPolygon(points=result_points,
-                                   ordering_from_edge=edge0)
+        return SphAcwConvexPolygon(points=result_points)
 
+    def __repr__(self):
+        return '{}({})'.format(self.__class__.__name__,
+                               ', '.join([repr(p) for p in self.points]))
 
+    def __str__(self):
+        return 'SphPoly({})'.format(
+            ', '.join([str(p) for p in self.points]))
