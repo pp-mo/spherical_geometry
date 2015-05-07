@@ -67,34 +67,41 @@ def convert_xyzs_to_latlons(xyzs, error_any_zeros=False):
 class PointZ(VectorisedArrayObject):
     array_names = ('lats', 'lons', '_xyzs')
 
-    def __init__(self, lats=None, lons=None, xyzs=None, in_degrees=False):
+    def __init__(self, lats=None, lons=None, xyzs=None, in_degrees=False,
+                 shape=None, arrays=None):
         """Initialise PointsZ, setting zero points to all-0s."""
-        arrays = {}
-        if lats is not None and lons is not None:
-            arrays['lats'], arrays['lons'] = lats, lons
-        if xyzs is not None:
-            # Note these are optional - only calculated if needed.
-            arrays['_xyzs'] = xyzs
-        match_error = False
-        if (xyzs is not None and
-                (lats is None or lons is None or ENABLE_CHECKING)):
-            lats, lons = convert_xyzs_to_latlons(*xyzs)
-            if lats is None or lons is None:
+        if arrays is None:
+            arrays = {}
+            if lats is not None and lons is not None:
+                lats = np.asanyarray(lats)
+                lons = np.asanyarray(lons)
                 arrays['lats'], arrays['lons'] = lats, lons
-            elif ENABLE_CHECKING:
-                if not np.allclose([lats, lons],
-                                   [arrays['lats'], arrays['lons']]):
+            if xyzs is not None:
+                # Note these are optional - only calculated if needed.
+                xyzs = np.asanyarray(xyzs)
+                arrays['_xyzs'] = xyzs
+            match_error = False
+            if (xyzs is not None and
+                    (lats is None or lons is None or ENABLE_CHECKING)):
+                lats, lons = convert_xyzs_to_latlons(xyzs)
+                if lats is None or lons is None:
+                    arrays['lats'], arrays['lons'] = lats, lons
+                elif ENABLE_CHECKING:
+                    if not np.allclose([lats, lons],
+                                       [arrays['lats'], arrays['lons']]):
+                        match_error = True
+            if ENABLE_CHECKING and xyzs is None:
+                xyzs = convert_latlons_to_xyzs(lats, lons)
+                if not np.allclose(xyzs, self.xyzs):
                     match_error = True
-        if ENABLE_CHECKING and xyzs is None:
-            xyzs = convert_latlons_to_xyzs(lats, lons)
-            if not np.allclose(xyzs, self.xyzs):
-                match_error = True
-        if match_error:
-            msg = ('inconsistent lats/lons and xyzs args: '
-                   'lats={}. lons={}, xyzs={}')
-            raise ValueError(msg.format(lats, lons, xyzs))
-        # Call main init : shape is that of inputs (all the same).
-        super(self, PointZ).__init__(arrays, shape=lats.shape)
+            if match_error:
+                msg = ('inconsistent lats/lons and xyzs args: '
+                       'lats={}. lons={}, xyzs={}')
+                raise ValueError(msg.format(lats, lons, xyzs))
+            if shape is None:
+                shape = lats.shape
+        # Call main init.
+        super(PointZ, self).__init__(arrays, shape=shape)
 
     @property
     def xyzs(self):
@@ -102,24 +109,13 @@ class PointZ(VectorisedArrayObject):
             self._xyzs = convert_latlons_to_xyzs(self.lats, self.lons)
         return self._xyzs
 
-#     @property
-#     def xs(self):
-#         return self.xyzs[..., 0]
-# 
-#     @property
-#     def ys(self):
-#         return self.xyzs[..., 1]
-# 
-#     @property
-#     def zs(self):
-#         return self.xyzs[..., 2]
-
     def antipodes(self):
         return PointZ(xyzs=-self.xyzs)
 
     def __eq__(self, others):
         # Note: array-style : result is boolean array
-        return np.abs(self.xyzs - others.xyzs) < POINT_ZERO_MAGNITUDE
+        return np.prod(np.abs(self.xyzs - others.xyzs) < POINT_ZERO_MAGNITUDE,
+                       axis=-1) == 1
 
     def __ne__(self, others):
         return ~self.__eq__(others)
@@ -127,7 +123,7 @@ class PointZ(VectorisedArrayObject):
     def dot_products(self, other):
         results = self.xyzs.dot(other.xyzs)
         # Clip to valid range, so small errors don't break inverse-trig usage
-        results = np.max(-1.0, np.min(1.0, results))
+        results = np.max((-1.0, np.min((1.0, results))))
         return results
 
     def cross_products(self, other):
@@ -143,7 +139,7 @@ class PointZ(VectorisedArrayObject):
         return PointZ(xyzs=xyzs)
 
     def distances_to(self, other):
-        return np.arccos(self.dot_product(other))
+        return np.arccos(self.dot_products(other))
 
 #    def __str__(self):
 #        def r2d(radians):

@@ -66,7 +66,7 @@ class VectorisedArrayObject(object):
     @classmethod
     def new_from_arrays(cls, arrays_dict, shape=None):
         """Make a new instance from a name-keyed dictionary of arrays."""
-        return cls(arrays_dict, shape=shape)
+        return cls(arrays=arrays_dict, shape=shape)
 
     def new_by_function(self, function, new_shape=None,
                         *op_args, **op_kwargs):
