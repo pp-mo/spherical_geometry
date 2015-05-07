@@ -108,35 +108,39 @@ class TestVecObj(VectorisedArrayObject):
     array_names = ('a', 'b', 'c')
 
 
-import numpy as np
+def tests():
+    import numpy as np
+    
+    #testing...
+    a1 = TestVecObj({'a':np.arange(24).reshape((3, 4, 2)) + 1001,
+                     'b':np.arange(12).reshape((3, 4)) + 2001})
+    
+    print 'a1.shape = ', a1.shape
+    print 'a1.a.shape = ', a1.a.shape
+    print 'a1.a = '
+    print a1.a
+    print 'a1.b.shape = ', a1.b.shape
+    print 'a1.b ='
+    print a1.b
+    
+    a2 = a1.reshape((12,))
+    a2 = a1.copy()
+    a2 = a1[1:4]
+    a2 = a1[:, None]
+    
+    print 'a2.shape = ', a2.shape
+    print 'a2.a.shape = ', a2.a.shape
+    print 'a2.a = '
+    print a2.a
+    print 'a2.b.shape = ', a2.b.shape
+    print 'a2.b ='
+    print a2.b
+    
+    a2.b[1:3] = 77
+    print 'new a2.b = '
+    print a2.b
+    print 'new a1.b = '
+    print a1.b
 
-#testing...
-a1 = TestVecObj({'a':np.arange(24).reshape((3, 4, 2)) + 1001,
-                 'b':np.arange(12).reshape((3, 4)) + 2001})
-
-print 'a1.shape = ', a1.shape
-print 'a1.a.shape = ', a1.a.shape
-print 'a1.a = '
-print a1.a
-print 'a1.b.shape = ', a1.b.shape
-print 'a1.b ='
-print a1.b
-
-a2 = a1.reshape((12,))
-a2 = a1.copy()
-a2 = a1[1:4]
-a2 = a1[:, None]
-
-print 'a2.shape = ', a2.shape
-print 'a2.a.shape = ', a2.a.shape
-print 'a2.a = '
-print a2.a
-print 'a2.b.shape = ', a2.b.shape
-print 'a2.b ='
-print a2.b
-
-a2.b[1:3] = 77
-print 'new a2.b = '
-print a2.b
-print 'new a1.b = '
-print a1.b
+if __name__ == '__main__':
+    tests()
