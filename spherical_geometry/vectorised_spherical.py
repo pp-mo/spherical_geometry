@@ -8,7 +8,7 @@ import numpy as np
 from spherical_geometry.vectorised_array_objects import VectorisedArrayObject
 
 # Control validity checking (turn off for speed)
-ENABLE_CHECKING = False
+ENABLE_CHECKING = True
 
 POINT_ZERO_MAGNITUDE = 1e-15
 ANGLE_ZERO_MAGNITUDE = 1e-8
@@ -69,39 +69,42 @@ class PointZ(VectorisedArrayObject):
 
     def __init__(self, lats=None, lons=None, xyzs=None, in_degrees=False,
                  shape=None, arrays=None):
-        """Initialise PointsZ, setting zero points to all-0s."""
+        """
+        Initialise PointsZ.
+
+        TODO: full description
+
+        """
+        # If passed raw 'arrays', as per parent constructor, we don't do the
+        # points setting:  This is new object creation for copy, slicing etc.
         if arrays is None:
+            # No arrays passed : points must be specified as lat/lon or xyz.
             arrays = {}
-            if lats is not None and lons is not None:
+            if ENABLE_CHECKING:
+                msg = 'either "xyzs", or both "lats and "lons" must be given'
+                if ((lats is not None and xyzs is not None) or
+                    (lats is not None and lons is None) or
+                    (lats is None and lons is not None) or
+                    (lats is None and lons is None and xyzs is None)):
+                        raise ValueError(msg)
+            if lats is not None:
                 lats = np.asanyarray(lats)
                 lons = np.asanyarray(lons)
-                arrays['lats'], arrays['lons'] = lats, lons
-            if xyzs is not None:
-                # Note these are optional - only calculated if needed.
+                if in_degrees:
+                    lats = np.deg2rad(lats)
+                    lons = np.deg2rad(lons)
+            else:
+                # Note "xyzs" are optional - only calculated if needed.
                 xyzs = np.asanyarray(xyzs)
-                arrays['_xyzs'] = xyzs
-            match_error = False
-            if (xyzs is not None and
-                    (lats is None or lons is None or ENABLE_CHECKING)):
+                # Note: convert xyz to latlon + back, to normalise values.
                 lats, lons = convert_xyzs_to_latlons(xyzs)
-                if lats is None or lons is None:
-                    arrays['lats'], arrays['lons'] = lats, lons
-                elif ENABLE_CHECKING:
-                    if not np.allclose([lats, lons],
-                                       [arrays['lats'], arrays['lons']]):
-                        match_error = True
-            if ENABLE_CHECKING and xyzs is None:
                 xyzs = convert_latlons_to_xyzs(lats, lons)
-                if not np.allclose(xyzs, self.xyzs):
-                    match_error = True
-            if match_error:
-                msg = ('inconsistent lats/lons and xyzs args: '
-                       'lats={}. lons={}, xyzs={}')
-                raise ValueError(msg.format(lats, lons, xyzs))
+                arrays['_xyzs'] = xyzs
+            arrays['lats'], arrays['lons'] = lats, lons
             if shape is None:
                 shape = lats.shape
         # Call main init.
-        super(PointZ, self).__init__(arrays, shape=shape)
+        super(PointZ, self).__init__(arrays=arrays, shape=shape)
 
     @property
     def xyzs(self):

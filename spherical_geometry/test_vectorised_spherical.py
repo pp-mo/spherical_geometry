@@ -5,12 +5,9 @@ Created on 7 May 2015
 '''
 from iris import tests
 
-import itertools
 import math
 
 import numpy as np
-
-import iris.util
 
 import spherical_geometry.vectorised_spherical as sphz
 
@@ -45,7 +42,7 @@ class TestConverts(tests.IrisTest):
             result_latlon = sphz.convert_xyzs_to_latlons(test_xyz)
             self.assertArrayAllClose(result_latlon, expect_latlon)
 
-        # Single-point testcases, copied from the scalar solution.
+        # Single-point testcases, borrowed from the old scalar version.
         _test_xyz_latlon((0, 0, 1), (d2r(90), 0.0))
         _test_xyz_latlon((0, 0, 0.01), (d2r(90), 0.0))
         _test_xyz_latlon((1, 0, 1.0), (d2r(45), 0.0))
@@ -117,6 +114,7 @@ class TestConverts(tests.IrisTest):
             result_xyz = sphz.convert_latlons_to_xyzs(*test_latlon)
             self.assertArrayAllClose(result_xyz, expect_xyz, atol=1e-7)
 
+        # Single-point testcases, borrowed from the old scalar version.
         rv2 = 1.0 / math.sqrt(2)
         _test_latlon_xyz((d2r(90), 0.0), (0, 0, 1.0))
         _test_latlon_xyz((d2r(45), 0.0), (rv2, 0, rv2))
