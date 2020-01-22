@@ -75,7 +75,7 @@ class VectorisedArrayObject(object):
                   for key in self.array_names}
         new_arrays = {key: function(a, *op_args, **op_kwargs)
                       if a is not None else None
-                      for key, a in arrays.iteritems()}
+                      for key, a in arrays.items()}
         return self.new_from_arrays(new_arrays, shape=new_shape)
 
     def new_by_method(self, method_name, *args, **kwargs):
@@ -85,7 +85,7 @@ class VectorisedArrayObject(object):
                   for key in self.array_names}
         new_arrays = {key: (getattr(a, method_name)(*args, **kwargs)
                             if a is not None else None)
-                      for key, a in arrays.iteritems()}
+                      for key, a in arrays.items()}
         return self.new_from_arrays(new_arrays, shape=shape)
 
     def copy(self):
@@ -115,32 +115,32 @@ def tests():
     a1 = TestVecObj({'a':np.arange(24).reshape((3, 4, 2)) + 1001,
                      'b':np.arange(12).reshape((3, 4)) + 2001})
     
-    print 'a1.shape = ', a1.shape
-    print 'a1.a.shape = ', a1.a.shape
-    print 'a1.a = '
-    print a1.a
-    print 'a1.b.shape = ', a1.b.shape
-    print 'a1.b ='
-    print a1.b
+    print('a1.shape = {}'.format(a1.shape))
+    print('a1.a.shape = {}'.format(a1.a.shape))
+    print('a1.a = ')
+    print(a1.a)
+    print('a1.b.shape = {}'.format(a1.b.shape))
+    print('a1.b =')
+    print(a1.b)
     
     a2 = a1.reshape((12,))
     a2 = a1.copy()
     a2 = a1[1:4]
     a2 = a1[:, None]
     
-    print 'a2.shape = ', a2.shape
-    print 'a2.a.shape = ', a2.a.shape
-    print 'a2.a = '
-    print a2.a
-    print 'a2.b.shape = ', a2.b.shape
-    print 'a2.b ='
-    print a2.b
+    print('a2.shape = {}'.format(a2.shape))
+    print('a2.a.shape = {}'.format(a2.a.shape))
+    print('a2.a = ')
+    print(a2.a)
+    print('a2.b.shape = {}'.format(a2.b.shape))
+    print('a2.b =')
+    print(a2.b)
     
     a2.b[1:3] = 77
-    print 'new a2.b = '
-    print a2.b
-    print 'new a1.b = '
-    print a1.b
+    print('new a2.b = ')
+    print(a2.b)
+    print('new a1.b = ')
+    print(a1.b)
 
 if __name__ == '__main__':
     tests()
