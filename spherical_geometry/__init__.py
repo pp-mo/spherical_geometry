@@ -127,7 +127,7 @@ class SphGcSeg(object):
 
     def has_point_on_left_side(self, point):
         """
-        Returns >0 (left), <1 (right) or =0.0 (close to the line).
+        Returns >0 (left), <0 (right) or =0.0 (close to the line).
 
         'COS_ANGLE_ZERO_MAGNITUDE' defines a tolerance zone near the line
         (i.e. 'nearly colinear'), where 0.0 is always returned.
@@ -216,6 +216,8 @@ class NonConvexPolygonError(ValueError):
 
 
 class SphAcwConvexPolygon(object):
+    USE_PSEUDOANGLES = False
+
     def __init__(self, points=[], in_degrees=False):
         self._set_points([sph_point(point, in_degrees=in_degrees)
                           for point in points])
@@ -259,9 +261,15 @@ class SphAcwConvexPolygon(object):
         # Make a reference edge from the centre to points[0]
         edge0 = SphGcSeg(centre_point, points[0])
         # Calculate (pseudo)angles from reference edge to all points
-        angles = [edge0.pseudoangle_to_point(p) for p in points]
-        # Sort points into this order, with original [0] at start
-        angles = [(angle + 4.0) % 4.0 for angle in angles]
+        if self.USE_PSEUDOANGLES:
+            angles = [edge0.pseudoangle_to_point(p) for p in points]
+            # Sort points into this order, with original [0] at start
+            angles = [(angle + 4.0) % 4.0 for angle in angles]
+        else:
+            # Same idea, but with "true" angles.
+            angles = [edge0.angle_to_point(p) for p in points]
+            angles = [(angle + 2.0 * np.pi) % (2.0 * np.pi) for angle in angles]
+
         points_and_angles = zip(points, angles)
         points_and_angles_sorted = sorted(points_and_angles,
                                           key=lambda p_and_a: p_and_a[1])

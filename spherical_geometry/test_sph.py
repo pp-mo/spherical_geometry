@@ -282,9 +282,9 @@ class TestSphGcSeg(tests.IrisTest):
             seg1 = sph.SphGcSeg(spt((y0, x0)), spt((y0, x0 + d_ang)))
             results = []
             if show_relangle_debug:
-                print
-                print 'Test at={} tol={:5.1f}'.format(from_latlon,
-                                                      atol_degrees)
+                print('')
+                print('Test at={} tol={:5.1f}'.format(from_latlon,
+                                                      atol_degrees))
             # NOTE: at present, does *not* work properly for 'negative' angles
             # so just test 0..180 for now
             for ang in np.linspace(0.0, +180.0, 9, endpoint=True):
@@ -293,8 +293,8 @@ class TestSphGcSeg(tests.IrisTest):
                 seg2 = sph.SphGcSeg(spt((y0, x0)), spt((y, x)))
                 a = r2d(seg1.angle_to_other(seg2))
                 if show_relangle_debug:
-                    print 'at={} ang={:7.1f} --> {:7.1f}'.format(from_latlon,
-                                                                 ang, a)
+                    print('at={} ang={:7.1f} --> {:7.1f}'.format(from_latlon,
+                                                                 ang, a))
                 if abs(abs(ang) - 180.0) > 0.1:
                     # Normal checks
                     results += [a]
@@ -366,9 +366,9 @@ class TestSphGcSeg(tests.IrisTest):
             seg1 = sph.SphGcSeg(spt((y0, x0)), spt((y0, x0 + d_ang)))
             results = []
             if show_relangle_debug:
-                print
-                print 'Test at={} tol={:5.1f}'.format(from_latlon,
-                                                      atol_degrees)
+                print('')
+                print('Test at={} tol={:5.1f}'.format(from_latlon,
+                                                      atol_degrees))
             # NOTE: the point-angle function *does* work for negative angles
             for ang in np.linspace(-180.0, +180.0, 17, endpoint=True):
                 x = x0 + d_ang * math.cos(d2r(ang))
@@ -376,8 +376,8 @@ class TestSphGcSeg(tests.IrisTest):
                 point = spt((y, x))
                 a = r2d(seg1.angle_to_point(point))
                 if show_relangle_debug:
-                    print 'at={} ang={:7.1f} --> {:7.1f}'.format(from_latlon,
-                                                                 ang, a)
+                    print('at={} ang={:7.1f} --> {:7.1f}'.format(from_latlon,
+                                                                 ang, a))
                 if abs(abs(ang) - 180.0) > 0.1:
                     # Normal checks
                     results += [a]
@@ -403,7 +403,7 @@ class TestSphGcSeg(tests.IrisTest):
         # Check pseudoangles in same order as true angles, at various points.
         test_rel_angles = (
             [-180.1, -180.0, -179.9] +
-            list(np.linspace(-180.0, +180.0, 90.0 / 8, endpoint=True)) +
+            list(np.linspace(-180.0, +180.0, int(90.0 / 8), endpoint=True)) +
             [179.9, 180.0, 180.1])
         for ang in test_rel_angles:
             x = d_ang * math.cos(d2r(ang))
@@ -597,7 +597,7 @@ class TestSphPolygon(tests.IrisTest):
                        '_test_small_square(y={},x={},d={},rtol={}):'
                        '\n  -> rdiff = {:3.2e}'.format(
                            y0, x0, d, rtol, abs(a - a_expect) / a_expect))
-                print str
+                print(str)
             self.assertAlmostEqual(poly.area(), a_expect, delta=delta)
 
         _test_small_square(0, 0, rtol=2e-5)
@@ -645,11 +645,11 @@ class TestSphPolygon(tests.IrisTest):
             hits = [box.contains_point(p) for p in poly.points]
             result = any(hits)
             if not result:
-                print
-                print 'NEAR-POINT SEARCH FAILED:'
-                print 'poly = ', ', '.join([p._ll_str() for p in poly.points])
-                print 'point = ', latlon
-                print 'box = ', ', '.join([p._ll_str() for p in box.points])
+                print('')
+                print('NEAR-POINT SEARCH FAILED:')
+                print('poly = ' + ', '.join([p._ll_str() for p in poly.points]))
+                print('point = {}'.format(latlon))
+                print('box = ' + ', '.join([p._ll_str() for p in box.points]))
             return result
 
         # test a simple intersection case
